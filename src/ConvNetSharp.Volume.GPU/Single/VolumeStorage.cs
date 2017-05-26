@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Threading;
 using ManagedCuda;
 using ManagedCuda.BasicTypes;
 
@@ -24,11 +25,12 @@ namespace ConvNetSharp.Volume.GPU.Single
 
             // Host 
             this._hostPointer = IntPtr.Zero;
-            var res = DriverAPINativeMethods.MemoryManagement.cuMemAllocHost_v2(ref this._hostPointer, this.Shape.TotalLength * sizeof(double));
+            var res = DriverAPINativeMethods.MemoryManagement.cuMemAllocHost_v2(ref this._hostPointer, this.GpuMemory);
             if (res != CUResult.Success)
             {
                 throw new CudaException(res);
             }
+            Interlocked.Add(ref VolumeStorageMemoryInfo.gpuMemoryUsage, this.GpuMemory);
             this.HostBuffer = (float*)this._hostPointer;
 
             // Zero out
@@ -39,6 +41,8 @@ namespace ConvNetSharp.Volume.GPU.Single
 
             this._isOwner = true;
         }
+
+        public long GpuMemory => this.Shape.TotalLength * sizeof(double);
 
         public VolumeStorage(float[] array, Shape shape, GpuContext context) : this(shape, context, array.Length)
         {
@@ -178,14 +182,15 @@ namespace ConvNetSharp.Volume.GPU.Single
 
                 if (this._isOwner)
                 {
-                    try
-                    {
-                        DriverAPINativeMethods.MemoryManagement.cuMemFreeHost(tmp);
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine(ex.Message);
-                    }
+                    CUResult freeMemResult = DriverAPINativeMethods.MemoryManagement.cuMemFreeHost(tmp);
+                    if (freeMemResult != CUResult.Success)
+                        throw new CudaException(freeMemResult);
+
+                    Interlocked.Add(ref VolumeStorageMemoryInfo.gpuMemoryUsage, -this.GpuMemory);
+                }
+                else
+                {
+                    Interlocked.Add(ref VolumeStorageMemoryInfo.notDisposedDueToOwnership, this.GpuMemory);
                 }
             }
 

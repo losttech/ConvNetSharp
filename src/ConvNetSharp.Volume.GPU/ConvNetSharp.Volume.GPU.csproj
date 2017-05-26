@@ -36,10 +36,10 @@
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="CudaDNN, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\..\packages\ManagedCuda-CudaDNN.5.0.1\lib\net45\CudaDNN.dll</HintPath>
+      <HintPath>..\..\..\..\RoboZZle\AI\src\packages\ManagedCuda-CudaDNN.5.0.1\lib\net45\CudaDNN.dll</HintPath>
     </Reference>
     <Reference Include="ManagedCuda, Version=7.5.7.0, Culture=neutral, PublicKeyToken=242d898828717aa0, processorArchitecture=MSIL">
-      <HintPath>..\..\packages\ManagedCuda-75-Standalone.7.5.7\lib\net45\ManagedCuda.dll</HintPath>
+      <HintPath>..\..\..\..\RoboZZle\AI\src\packages\ManagedCuda-75-Standalone.7.5.7\lib\net45\ManagedCuda.dll</HintPath>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
@@ -63,6 +63,7 @@
     <Compile Include="Single\VolumeStorage.cs" />
     <Compile Include="Single\Volume.cs" />
     <Compile Include="Single\VolumeBuilder.cs" />
+    <Compile Include="VolumeStorageMemoryInfo.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\ConvNetSharp.Volume\ConvNetSharp.Volume.csproj">
