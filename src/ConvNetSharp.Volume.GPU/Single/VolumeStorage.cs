@@ -9,40 +9,42 @@ namespace ConvNetSharp.Volume.GPU.Single
 {
     public unsafe class VolumeStorage : VolumeStorage<float>, IDisposable
     {
-        private readonly IntPtr _hostPointer;
+        private readonly CudaHostMemoryRegion _hostPointer;
         private readonly bool _isOwner;
         private bool _allocatedOnDevice;
+        private bool disposed;
 
         public VolumeStorage(Shape shape, GpuContext context, long length = -1) : base(shape)
         {
             this.Context = context;
 
-            // Take care of unkown dimension
-            if (length != -1)
-            {
-                this.Shape.GuessUnkownDimension(length);
-            }
+            this.InitializeUnknownDimension(length);
 
-            // Host 
-            this._hostPointer = IntPtr.Zero;
-            var res = DriverAPINativeMethods.MemoryManagement.cuMemAllocHost_v2(ref this._hostPointer, this.GpuMemory);
-            if (res != CUResult.Success)
-            {
-                throw new CudaException(res);
-            }
-            Interlocked.Add(ref VolumeStorageMemoryInfo.gpuMemoryUsage, this.GpuMemory);
-            this.HostBuffer = (float*)this._hostPointer;
-
-            // Zero out
-            for (var i = 0; i < this.Shape.TotalLength; i++)
-            {
-                this.HostBuffer[i] = 0.0f;
-            }
+            this._hostPointer = InitializeSharedMemory(this.Shape.TotalLength);
 
             this._isOwner = true;
         }
 
-        public long GpuMemory => this.Shape.TotalLength * sizeof(double);
+        void InitializeUnknownDimension(long length)
+        {
+            if (length != -1)
+            {
+                this.Shape.GuessUnkownDimension(length);
+            }
+        }
+
+        static unsafe CudaHostMemoryRegion InitializeSharedMemory(long elementCount)
+        {
+            var sharedMemory = new CudaHostMemoryRegion(byteCount: elementCount*sizeof(float));
+
+            // Zero out
+            float* hostBuffer = (float*) sharedMemory.Start;
+            for (var i = 0; i < elementCount; i++)
+            {
+                hostBuffer[i] = 0.0f;
+            }
+            return sharedMemory;
+        }
 
         public VolumeStorage(float[] array, Shape shape, GpuContext context) : this(shape, context, array.Length)
         {
@@ -63,12 +65,13 @@ namespace ConvNetSharp.Volume.GPU.Single
         }
 
         public VolumeStorage(VolumeStorage storage, Shape shape)
-            : this(shape, storage.Context, storage.Shape.TotalLength)
+            : base(shape)
         {
+            this.Context = storage.Context;
+            this.InitializeUnknownDimension(storage.Shape.TotalLength);
+            this._hostPointer = storage._hostPointer;
             this._isOwner = false;
             this.Location = storage.Location;
-            this.HostBuffer = storage.HostBuffer;
-            this._hostPointer = storage._hostPointer;
             this._allocatedOnDevice = storage._allocatedOnDevice;
 
             storage.CopyToDevice();
@@ -76,7 +79,7 @@ namespace ConvNetSharp.Volume.GPU.Single
 
             this.Location = DataLocation.Device;
         }
-
+        public long GpuMemory => this.Shape.TotalLength * sizeof(double);
         public CudaDeviceVariable<byte> ConvolutionBackwardFilterStorage { get; set; }
 
         public CudaDeviceVariable<byte> ConvolutionBackwardStorage { get; set; }
@@ -85,7 +88,7 @@ namespace ConvNetSharp.Volume.GPU.Single
 
         public DataLocation Location { get; set; }
 
-        public float* HostBuffer { get; private set; }
+        public float* HostBuffer => (float*)this._hostPointer.Start;
 
         public CudaDeviceVariable<float> DeviceBuffer { get; private set; }
 
@@ -134,7 +137,7 @@ namespace ConvNetSharp.Volume.GPU.Single
                 }
 
                 var res = DriverAPINativeMethods.AsynchronousMemcpy_v2.cuMemcpyHtoDAsync_v2(
-                    this.DeviceBuffer.DevicePointer, this._hostPointer, this.DeviceBuffer.SizeInBytes,
+                    this.DeviceBuffer.DevicePointer, this._hostPointer.Start, this.DeviceBuffer.SizeInBytes,
                     this.Context.DefaultStream.Stream);
                 if (res != CUResult.Success)
                 {
@@ -175,18 +178,16 @@ namespace ConvNetSharp.Volume.GPU.Single
                 GC.SuppressFinalize(this);
             }
 
+            if (this.disposed)
+                return;
+
+            this.disposed = true;
+
             if (this.HostBuffer != default(float*))
             {
-                var tmp = new IntPtr(this.HostBuffer);
-                this.HostBuffer = default(float*);
-
                 if (this._isOwner)
                 {
-                    CUResult freeMemResult = DriverAPINativeMethods.MemoryManagement.cuMemFreeHost(tmp);
-                    if (freeMemResult != CUResult.Success)
-                        throw new CudaException(freeMemResult);
-
-                    Interlocked.Add(ref VolumeStorageMemoryInfo.gpuMemoryUsage, -this.GpuMemory);
+                    this._hostPointer.Dispose();
                 }
                 else
                 {
