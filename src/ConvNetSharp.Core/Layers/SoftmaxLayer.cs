@@ -30,24 +30,14 @@ namespace ConvNetSharp.Core.Layers
         {
             //loss is the class negative log likelihood
             var loss = Ops<T>.Zero;
-            for (var n = 0; n < y.Shape.GetDimension(3); n++)
+            var expected = y.ToArray();
+            var actual = actualSet.ToArray();
+            
+            for (int i = 0; i < expected.Length; i++)
             {
-                for (var d = 0; d < y.Shape.GetDimension(2); d++)
-                {
-                    for (var h = 0; h < y.Shape.GetDimension(1); h++)
-                    {
-                        for (var w = 0; w < y.Shape.GetDimension(0); w++)
-                        {
-                            var expected = y.Get(w, h, d, n);
-                            var actual = actualSet.Get(w, h, d, n);
-                            if (Ops<T>.Zero.Equals(actual))
-                                actual = Ops<T>.Epsilon;
-                            var current = Ops<T>.Multiply(expected, Ops<T>.Log(actual));
-
-                            loss = Ops<T>.Add(loss, current);
-                        }
-                    }
-                }
+                actual[i] = Ops<T>.Max(actual[i], Ops<T>.Epsilon);
+                var current = Ops<T>.Multiply(expected[i], Ops<T>.Log(actual[i]));
+                loss = Ops<T>.Add(loss, current);
             }
 
             loss = Ops<T>.Negate(loss);

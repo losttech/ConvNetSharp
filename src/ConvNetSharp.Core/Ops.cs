@@ -13,6 +13,7 @@ namespace ConvNetSharp.Core
         public static readonly Func<T, T, T> Divide;
 
         public static readonly Func<T, T> Log;
+        public static readonly Func<T, T, T> Max;
 
         public static readonly Func<T, T, T> Pow;
 
@@ -56,6 +57,11 @@ namespace ConvNetSharp.Core
                 Expression.Convert(
                     Expression.Call(null, logMethod, Expression.Convert(firstOperand, typeof(double))),
                     typeof(T)), firstOperand).Compile();
+
+            var maxMethod = typeof(Math).GetRuntimeMethod(nameof(Math.Max), new[] {typeof(T), typeof(T)});
+            Max = Expression.Lambda<Func<T, T, T>>(
+                Expression.Call(null, maxMethod, firstOperand, secondOperand),
+                firstOperand, secondOperand).Compile();
 
             GreaterThan =
                 Expression.Lambda<Func<T, T, bool>>(Expression.GreaterThan(firstOperand, secondOperand), firstOperand,
