@@ -58,7 +58,7 @@ namespace ConvNetSharp.Core.Layers
 
         public virtual Volume<T> DoForward(Volume<T> input, bool isTraining = false)
         {
-#if DEBUG
+#if DEBUG && DEBUG_DO_FORWARD_VALIDATE
             var inputs = input.ToArray();
             foreach(var i in inputs)
                 if (Ops<T>.IsInvalid(i))
