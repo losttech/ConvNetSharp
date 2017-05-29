@@ -33,17 +33,34 @@ namespace ConvNetSharp.Volume.GPU.Single
             }
         }
 
-        static unsafe CudaHostMemoryRegion InitializeSharedMemory(long elementCount)
+        [DllImport("Kernel32.dll", EntryPoint = "RtlZeroMemory", SetLastError = false)]
+        static extern void ZeroMemory(IntPtr dest, UIntPtr size);
+
+        static CudaHostMemoryRegion InitializeSharedMemory(long elementCount)
         {
             var sharedMemory = new CudaHostMemoryRegion(byteCount: elementCount*sizeof(float));
 
             // Zero out
-            float* hostBuffer = (float*) sharedMemory.Start;
-            for (var i = 0; i < elementCount; i++)
-            {
-                hostBuffer[i] = 0.0f;
-            }
+            FillWithZeroes(sharedMemory.Start, sharedMemory.ByteCount);
             return sharedMemory;
+        }
+
+        static void FillWithZeroes(IntPtr memoryStart, long size)
+        {
+            switch (Environment.OSVersion.Platform)
+            {
+            case PlatformID.Win32NT:
+            case PlatformID.Win32Windows:
+            case PlatformID.WinCE:
+                ZeroMemory(memoryStart, (UIntPtr)size);
+                break;
+            default:
+                byte* buffer = (byte*)memoryStart;
+                for (var i = 0; i < size; i++) {
+                    buffer[i] = 0;
+                }
+                break;
+            }
         }
 
         public VolumeStorage(float[] array, Shape shape, GpuContext context) : this(shape, context, array.Length)
@@ -67,6 +84,11 @@ namespace ConvNetSharp.Volume.GPU.Single
         public VolumeStorage(VolumeStorage storage, Shape shape)
             : base(shape)
         {
+            if (storage == null)
+                throw new ArgumentNullException(nameof(storage));
+            if (storage._hostPointer == null)
+                throw new ArgumentException();
+
             this.Context = storage.Context;
             this.InitializeUnknownDimension(storage.Shape.TotalLength);
             this._hostPointer = storage._hostPointer;
@@ -183,7 +205,7 @@ namespace ConvNetSharp.Volume.GPU.Single
 
             this.disposed = true;
 
-            if (this.HostBuffer != default(float*))
+            if (this._hostPointer != null && this.HostBuffer != default(float*))
             {
                 if (this._isOwner)
                 {
